@@ -20,10 +20,23 @@ If the app is force-quit or crashes, open it again and quit normally to restore 
 The bundled executable also supports session-scoped automation:
 
 ```sh
-"$HOME/Applications/Game Mode Tray.app/Contents/MacOS/GameModeTray" --start-session
+"$HOME/Applications/Game Mode Tray.app/Contents/MacOS/GameModeTray" --start-session my-game
 # Run the game.
-"$HOME/Applications/Game Mode Tray.app/Contents/MacOS/GameModeTray" --stop-session
+"$HOME/Applications/Game Mode Tray.app/Contents/MacOS/GameModeTray" --stop-session my-game
 ```
+
+Each owner keeps the shared gaming session active until that owner stops. Concurrent games and the menu bar app cannot restore each other's settings.
+
+## Ready or Not with Porting Kit
+
+Install the app, then wrap the Ready or Not launcher:
+
+```sh
+make install
+./Scripts/integrate-ready-or-not.sh
+```
+
+The wrapper starts a `ready-or-not` session before Porting Kit launches the game and stops it after the Porting Kit launcher exits. Run the integration command again whenever Porting Kit replaces the launcher.
 
 ## Build
 

@@ -2,6 +2,7 @@ import AppKit
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
+  private let sessionOwner = "tray"
   private let session = GamingSession()
   private let worker = DispatchQueue(label: "com.nek12.GameModeTray.session", qos: .userInitiated)
   private var statusItem: NSStatusItem!
@@ -34,7 +35,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     setBusy(true, status: "Restoring System Settings…")
     worker.async { [session] in
-      let result = Result { try session.stop() }
+      let result = Result { try session.stop(owner: self.sessionOwner) }
       DispatchQueue.main.async {
         switch result {
         case .success:
@@ -87,7 +88,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let enabled = !suppressHotCorners
     setBusy(true, status: enabled ? "Suppressing Hot Corners…" : "Restoring Hot Corners…")
     worker.async { [session] in
-      let result = Result { try session.setHotCornerSuppression(enabled) }
+      let result = Result {
+        try session.setHotCornerSuppression(owner: self.sessionOwner, enabled: enabled)
+      }
       DispatchQueue.main.async {
         switch result {
         case .success:
@@ -105,7 +108,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   private func startSession() {
     setBusy(true, status: "Starting Gaming Session…")
     worker.async { [session, suppressHotCorners] in
-      let result = Result { try session.start(suppressHotCorners: suppressHotCorners) }
+      let result = Result {
+        try session.start(owner: self.sessionOwner, suppressHotCorners: suppressHotCorners)
+      }
       DispatchQueue.main.async {
         switch result {
         case .success:
@@ -123,7 +128,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   private func stopSession() {
     setBusy(true, status: "Restoring System Settings…")
     worker.async { [session] in
-      let result = Result { try session.stop() }
+      let result = Result { try session.stop(owner: self.sessionOwner) }
       DispatchQueue.main.async {
         switch result {
         case .success:

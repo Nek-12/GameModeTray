@@ -4,68 +4,101 @@ import GameModeCore
 struct GamingSession: Sendable {
   private let gameMode = GameModeController()
   private let hotCorners = HotCornerController()
-  private let backupStore = BackupStore()
+  private let store = SessionStore()
 
-  func start(suppressHotCorners: Bool) throws {
-    if let existingBackup = try backupStore.load() {
-      try gameMode.setPolicy(.on)
-      if suppressHotCorners, existingBackup.hotCorners != nil {
-        try hotCorners.suppress()
-      }
-      return
-    }
-
-    let policy = try gameMode.policy()
-    let cornerSnapshot = suppressHotCorners ? try hotCorners.snapshot() : nil
-    let backup = SessionBackup(gameModePolicy: policy, hotCorners: cornerSnapshot)
-
-    // Persist the baseline before changing system state so a relaunch can restore it after a crash.
-    try backupStore.save(backup)
-    do {
-      try gameMode.setPolicy(.on)
-      if suppressHotCorners {
-        try hotCorners.suppress()
-      }
-    } catch {
-      try? restore()
-      throw error
-    }
-  }
-
-  func stop() throws {
-    try restore()
-  }
-
-  func setHotCornerSuppression(_ enabled: Bool) throws {
-    guard let backup = try backupStore.load() else {
-      return
-    }
-    if enabled {
-      if backup.hotCorners == nil {
-        let updated = SessionBackup(
-          gameModePolicy: backup.gameModePolicy,
-          hotCorners: try hotCorners.snapshot()
+  func start(owner: String, suppressHotCorners: Bool) throws {
+    try validate(owner: owner)
+    try store.withLock { lockedStore in
+      let previousState = try lockedStore.load()
+      var state: GamingSessionState
+      if let previousState {
+        state = previousState
+      } else {
+        state = GamingSessionState(
+          originalGameModePolicy: try gameMode.policy(),
+          hotCorners: nil,
+          owners: [:]
         )
-        try backupStore.save(updated)
       }
-      try hotCorners.suppress()
-    } else if let snapshot = backup.hotCorners {
-      try hotCorners.restore(snapshot)
-      let updated = SessionBackup(
-        gameModePolicy: backup.gameModePolicy,
-        hotCorners: nil
-      )
-      try backupStore.save(updated)
+
+      state.owners[owner] = SessionOwner(suppressHotCorners: suppressHotCorners)
+      if state.suppressesHotCorners, state.hotCorners == nil {
+        state.hotCorners = try hotCorners.snapshot()
+      }
+
+      // Persist ownership and the baseline before changing system state so a
+      // relaunch can recover after a crash.
+      try lockedStore.save(state)
+      do {
+        try applyActiveState(&state)
+        try lockedStore.save(state)
+      } catch {
+        let startError = error
+        do {
+          if var previousState {
+            try lockedStore.save(previousState)
+            try applyState(&previousState)
+            try lockedStore.save(previousState)
+          } else {
+            try restoreSystemState(state)
+            try lockedStore.clear()
+          }
+        } catch let rollbackError {
+          throw SessionError.startAndRollbackFailed(
+            startError: startError,
+            rollbackError: rollbackError
+          )
+        }
+        throw startError
+      }
     }
   }
 
-  private func restore() throws {
-    guard let backup = try backupStore.load() else {
-      return
-    }
+  func stop(owner: String) throws {
+    try validate(owner: owner)
+    try store.withLock { lockedStore in
+      guard var state = try lockedStore.load() else {
+        return
+      }
 
+      state.owners.removeValue(forKey: owner)
+      try lockedStore.save(state)
+
+      if state.owners.isEmpty {
+        try restoreSystemState(state)
+        try lockedStore.clear()
+      } else {
+        try applyActiveState(&state)
+        try lockedStore.save(state)
+      }
+    }
+  }
+
+  func setHotCornerSuppression(owner: String, enabled: Bool) throws {
+    try start(owner: owner, suppressHotCorners: enabled)
+  }
+
+  private func applyState(_ state: inout GamingSessionState) throws {
+    if state.owners.isEmpty {
+      try restoreSystemState(state)
+    } else {
+      try applyActiveState(&state)
+    }
+  }
+
+  private func applyActiveState(_ state: inout GamingSessionState) throws {
+    try gameMode.setPolicy(.on)
+    if state.suppressesHotCorners {
+      try hotCorners.suppress()
+    } else if let snapshot = state.hotCorners {
+      try hotCorners.restore(snapshot)
+      state.hotCorners = nil
+    }
+  }
+
+  private func restoreSystemState(_ state: GamingSessionState) throws {
     var errors: [Error] = []
-    if let snapshot = backup.hotCorners {
+    if let snapshot = state.hotCorners {
       do {
         try hotCorners.restore(snapshot)
       } catch {
@@ -73,24 +106,40 @@ struct GamingSession: Sendable {
       }
     }
     do {
-      try gameMode.setPolicy(backup.gameModePolicy)
+      try gameMode.setPolicy(state.originalGameModePolicy)
     } catch {
       errors.append(error)
     }
 
-    if errors.isEmpty {
-      backupStore.clear()
-    } else {
+    if !errors.isEmpty {
       throw SessionError.restoreFailed(errors)
+    }
+  }
+
+  private func validate(owner: String) throws {
+    guard !owner.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+      throw SessionError.invalidOwner
     }
   }
 }
 
 enum SessionError: LocalizedError {
+  case invalidOwner
+  case startAndRollbackFailed(startError: Error, rollbackError: Error)
   case restoreFailed([Error])
 
   var errorDescription: String? {
     switch self {
+    case .invalidOwner:
+      return "A gaming session owner is required."
+    case .startAndRollbackFailed(let startError, let rollbackError):
+      return """
+        The gaming session could not start, and its settings could not be rolled back.
+
+        Start error: \(startError.localizedDescription)
+
+        Rollback error: \(rollbackError.localizedDescription)
+        """
     case .restoreFailed(let errors):
       return "Some gaming settings could not be restored:\n\n"
         + errors.map { $0.localizedDescription }.joined(separator: "\n\n")

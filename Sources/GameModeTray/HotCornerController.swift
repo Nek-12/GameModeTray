@@ -34,7 +34,7 @@ struct HotCornerController: Sendable {
     for key in HotCornerSnapshot.keys {
       _ = try runner.run("/usr/bin/defaults", ["write", domain, key, "-int", "0"])
     }
-    restartDock()
+    try restartDock()
   }
 
   func restore(_ snapshot: HotCornerSnapshot) throws {
@@ -50,19 +50,40 @@ struct HotCornerController: Sendable {
     for (key, value) in snapshot.values {
       _ = try runner.run("/usr/bin/defaults", ["write", domain, key, "-int", String(value)])
     }
-    restartDock()
+    try restartDock()
   }
 
-  private func restartDock() {
-    _ = try? runner.run("/usr/bin/killall", ["Dock"])
+  private func restartDock() throws {
+    var lastUnavailableError: Error?
+
+    for _ in 0..<20 {
+      do {
+        _ = try runner.run("/usr/bin/killall", ["Dock"])
+        return
+      } catch let error as CommandError {
+        guard case .failed(_, _, let status, let output) = error,
+          status == 1,
+          output.contains("No matching processes")
+        else {
+          throw error
+        }
+        lastUnavailableError = error
+        Thread.sleep(forTimeInterval: 0.1)
+      }
+    }
+
+    throw lastUnavailableError ?? HotCornerError.dockUnavailable
   }
 }
 
 enum HotCornerError: LocalizedError {
+  case dockUnavailable
   case invalidValue(key: String, value: String)
 
   var errorDescription: String? {
     switch self {
+    case .dockUnavailable:
+      return "Dock did not become available to reload Hot Corner settings."
     case .invalidValue(let key, let value):
       return "The Dock preference \(key) has an invalid value: \(value)"
     }

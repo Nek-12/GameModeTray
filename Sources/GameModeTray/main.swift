@@ -1,13 +1,15 @@
 import AppKit
 
 let arguments = Array(CommandLine.arguments.dropFirst())
-if arguments == ["--start-session"] || arguments == ["--stop-session"] {
+if arguments.count == 2,
+  arguments[0] == "--start-session" || arguments[0] == "--stop-session"
+{
   do {
     let session = GamingSession()
     if arguments[0] == "--start-session" {
-      try session.start(suppressHotCorners: true)
+      try session.start(owner: arguments[1], suppressHotCorners: true)
     } else {
-      try session.stop()
+      try session.stop(owner: arguments[1])
     }
     exit(EXIT_SUCCESS)
   } catch {

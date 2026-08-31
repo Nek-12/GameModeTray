@@ -31,3 +31,19 @@ import Testing
 @Test func rejectsUnknownStatus() {
   #expect(GameModePolicyParser.parse(status: "something changed") == nil)
 }
+
+@Test func rejectsPolicyLineWithUnexpectedSuffix() {
+  let status =
+    "Game mode enablement policy is currently disabled. Game mode is forced always on. Unexpected."
+
+  #expect(GameModePolicyParser.parse(status: status) == nil)
+}
+
+@Test func rejectsAmbiguousPolicyLines() {
+  let status = """
+    Game mode enablement policy is currently automatic. The system must meet all specified requirements to enable game mode.
+    Game mode enablement policy is currently disabled. Game mode is forced always on.
+    """
+
+  #expect(GameModePolicyParser.parse(status: status) == nil)
+}
