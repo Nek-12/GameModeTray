@@ -13,7 +13,7 @@ make install
 open "$HOME/Applications/Game Mode Tray.app"
 ```
 
-The gaming session starts when the app opens. Use the controller icon in the menu bar to stop or restart the session, toggle Hot Corner suppression, or quit.
+The gaming session starts when the app opens. Use the `🎮 ON` item in the menu bar to stop or restart the session, toggle Hot Corner suppression, or quit.
 
 If the app is force-quit or crashes, open it again and quit normally to restore the settings saved before the gaming session.
 

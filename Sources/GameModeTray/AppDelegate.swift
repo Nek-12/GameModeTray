@@ -51,11 +51,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   }
 
   private func configureStatusItem() {
-    statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-    statusItem.button?.image = NSImage(
-      systemSymbolName: "gamecontroller.fill",
-      accessibilityDescription: nil
-    )
+    statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+    statusItem.autosaveName = "GameModeTrayStatus"
+    statusItem.isVisible = true
+    statusItem.button?.title = "🎮 …"
+    statusItem.button?.toolTip = "Game Mode Tray"
 
     let menu = NSMenu()
     statusMenuItem.isEnabled = false
@@ -147,6 +147,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     statusMenuItem.title = status
     toggleSessionMenuItem.isEnabled = !busy
     hotCornersMenuItem.isEnabled = !busy && sessionActive
+    statusItem.button?.title = busy ? "🎮 …" : (sessionActive ? "🎮 ON" : "🎮 OFF")
   }
 
   private func present(_ error: Error) {
