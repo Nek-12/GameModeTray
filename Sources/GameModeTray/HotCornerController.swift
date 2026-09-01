@@ -54,25 +54,36 @@ struct HotCornerController: Sendable {
   }
 
   private func restartDock() throws {
-    var lastUnavailableError: Error?
-
     for _ in 0..<20 {
+      guard try isDockRunning() else {
+        Thread.sleep(forTimeInterval: 0.1)
+        continue
+      }
+
       do {
         _ = try runner.run("/usr/bin/killall", ["Dock"])
         return
-      } catch let error as CommandError {
-        guard case .failed(_, _, let status, let output) = error,
-          status == 1,
-          output.contains("No matching processes")
-        else {
+      } catch {
+        if try isDockRunning() {
           throw error
         }
-        lastUnavailableError = error
-        Thread.sleep(forTimeInterval: 0.1)
+        return
       }
     }
 
-    throw lastUnavailableError ?? HotCornerError.dockUnavailable
+    throw HotCornerError.dockUnavailable
+  }
+
+  private func isDockRunning() throws -> Bool {
+    do {
+      _ = try runner.run("/usr/bin/pgrep", ["-x", "Dock"])
+      return true
+    } catch let error as CommandError {
+      if case .failed(_, _, let status, _) = error, status == 1 {
+        return false
+      }
+      throw error
+    }
   }
 }
 

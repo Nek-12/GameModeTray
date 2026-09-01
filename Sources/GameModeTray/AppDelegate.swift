@@ -89,7 +89,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     setBusy(true, status: enabled ? "Suppressing Hot Corners…" : "Restoring Hot Corners…")
     worker.async { [session] in
       let result = Result {
-        try session.setHotCornerSuppression(owner: self.sessionOwner, enabled: enabled)
+        try session.setHotCornerSuppression(
+          owner: self.sessionOwner,
+          processID: getpid(),
+          enabled: enabled
+        )
       }
       DispatchQueue.main.async {
         switch result {
@@ -109,7 +113,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     setBusy(true, status: "Starting Gaming Session…")
     worker.async { [session, suppressHotCorners] in
       let result = Result {
-        try session.start(owner: self.sessionOwner, suppressHotCorners: suppressHotCorners)
+        try session.start(
+          owner: self.sessionOwner,
+          processID: getpid(),
+          suppressHotCorners: suppressHotCorners
+        )
       }
       DispatchQueue.main.async {
         switch result {

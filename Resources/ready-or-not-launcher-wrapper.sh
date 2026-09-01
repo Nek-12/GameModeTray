@@ -5,7 +5,7 @@ set -u
 LAUNCHER_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 PORTING_KIT_LAUNCHER="$LAUNCHER_DIR/wineskinlauncher.porting-kit"
 GAME_MODE_TRAY="$HOME/Applications/Game Mode Tray.app/Contents/MacOS/GameModeTray"
-SESSION_OWNER="ready-or-not"
+SESSION_OWNER="ready-or-not-$$"
 MANAGES_GAMING_SESSION=0
 
 restore_gaming_session() {
@@ -21,7 +21,7 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 
 if [ -x "$GAME_MODE_TRAY" ]; then
-    if "$GAME_MODE_TRAY" --start-session "$SESSION_OWNER"; then
+    if "$GAME_MODE_TRAY" --start-session "$SESSION_OWNER" --process-id "$$"; then
         MANAGES_GAMING_SESSION=1
     else
         echo "Warning: Game Mode Tray could not start; launching Ready or Not without managed gaming settings." >&2

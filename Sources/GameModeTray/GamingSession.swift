@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 import GameModeCore
 
@@ -6,10 +7,15 @@ struct GamingSession: Sendable {
   private let hotCorners = HotCornerController()
   private let store = SessionStore()
 
-  func start(owner: String, suppressHotCorners: Bool) throws {
+  func start(owner: String, processID: Int32? = nil, suppressHotCorners: Bool) throws {
     try validate(owner: owner)
+    try validate(processID: processID)
     try store.withLock { lockedStore in
-      let previousState = try lockedStore.load()
+      var previousState = try lockedStore.load()
+      if var state = previousState {
+        state.owners = state.owners.filter { isProcessAlive($0.value.processID) }
+        previousState = state
+      }
       var state: GamingSessionState
       if let previousState {
         state = previousState
@@ -21,7 +27,10 @@ struct GamingSession: Sendable {
         )
       }
 
-      state.owners[owner] = SessionOwner(suppressHotCorners: suppressHotCorners)
+      state.owners[owner] = SessionOwner(
+        suppressHotCorners: suppressHotCorners,
+        processID: processID
+      )
       if state.suppressesHotCorners, state.hotCorners == nil {
         state.hotCorners = try hotCorners.snapshot()
       }
@@ -38,7 +47,11 @@ struct GamingSession: Sendable {
           if var previousState {
             try lockedStore.save(previousState)
             try applyState(&previousState)
-            try lockedStore.save(previousState)
+            if previousState.owners.isEmpty {
+              try lockedStore.clear()
+            } else {
+              try lockedStore.save(previousState)
+            }
           } else {
             try restoreSystemState(state)
             try lockedStore.clear()
@@ -61,6 +74,7 @@ struct GamingSession: Sendable {
         return
       }
 
+      state.owners = state.owners.filter { isProcessAlive($0.value.processID) }
       state.owners.removeValue(forKey: owner)
       try lockedStore.save(state)
 
@@ -74,8 +88,8 @@ struct GamingSession: Sendable {
     }
   }
 
-  func setHotCornerSuppression(owner: String, enabled: Bool) throws {
-    try start(owner: owner, suppressHotCorners: enabled)
+  func setHotCornerSuppression(owner: String, processID: Int32? = nil, enabled: Bool) throws {
+    try start(owner: owner, processID: processID, suppressHotCorners: enabled)
   }
 
   private func applyState(_ state: inout GamingSessionState) throws {
@@ -121,10 +135,27 @@ struct GamingSession: Sendable {
       throw SessionError.invalidOwner
     }
   }
+
+  private func validate(processID: Int32?) throws {
+    guard processID == nil || processID! > 0 else {
+      throw SessionError.invalidProcessID
+    }
+  }
+
+  private func isProcessAlive(_ processID: Int32?) -> Bool {
+    guard let processID else {
+      return true
+    }
+    if kill(processID, 0) == 0 {
+      return true
+    }
+    return errno == EPERM
+  }
 }
 
 enum SessionError: LocalizedError {
   case invalidOwner
+  case invalidProcessID
   case startAndRollbackFailed(startError: Error, rollbackError: Error)
   case restoreFailed([Error])
 
@@ -132,6 +163,8 @@ enum SessionError: LocalizedError {
     switch self {
     case .invalidOwner:
       return "A gaming session owner is required."
+    case .invalidProcessID:
+      return "A gaming session process ID must be greater than zero."
     case .startAndRollbackFailed(let startError, let rollbackError):
       return """
         The gaming session could not start, and its settings could not be rolled back.

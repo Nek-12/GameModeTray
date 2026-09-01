@@ -4,6 +4,7 @@ import GameModeCore
 
 struct SessionOwner: Codable, Equatable, Sendable {
   var suppressHotCorners: Bool
+  var processID: Int32?
 }
 
 struct GamingSessionState: Codable, Equatable, Sendable {
